@@ -1,10 +1,14 @@
 import json
+import logging
 from collections import defaultdict
 from typing import Any
 
 from mcp_client import MCPClient
 from models.message import Message, Role
 from openai import AsyncAzureOpenAI
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
 class DialClient:
@@ -14,14 +18,42 @@ class DialClient:
         self,
         api_key: str,
         endpoint: str,
-        tools: list[dict[str, Any]],
-        mcp_client: MCPClient,
+        mcp_clients: list[MCPClient],
     ):
-        self.tools = tools
-        self.mcp_client = mcp_client
+        self.mcp_clients = mcp_clients
         self.openai = AsyncAzureOpenAI(
             api_key=api_key, azure_endpoint=endpoint, api_version="2025-01-01-preview"
         )
+        self.tools = []
+        self.mcp_clients_tools = {}
+
+        logger.info("DialClient initialized")
+
+    async def __aenter__(self):
+        await self._load_tools()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+    async def _load_tools(self):
+        for mcp_client in self.mcp_clients:
+            try:
+                tools = await mcp_client.get_tools()
+                self.tools.extend(tools)
+
+                for tool in tools:
+                    self.mcp_clients_tools[tool["function"]["name"]] = mcp_client
+
+                logger.info(
+                    "Tools loaded from MCP client %s", mcp_client.mcp_server_url
+                )
+            except Exception as e:
+                logger.error(
+                    f"Error loading tools from MCP client {mcp_client.mcp_server_url}: {e}"
+                )
+        logger.info("Tools loaded")
+        logger.debug("Tools: %s", json.dumps(self.tools, indent=2))
 
     def _collect_tool_calls(self, tool_deltas):
         """Convert streaming tool call deltas to complete tool calls"""
@@ -105,7 +137,8 @@ class DialClient:
             tool_args = json.loads(tool_call["function"]["arguments"])
 
             try:
-                tool_response = await self.mcp_client.call_tool(tool_name, tool_args)
+                mcp_client = self.mcp_clients_tools[tool_name]
+                tool_response = await mcp_client.call_tool(tool_name, tool_args)
                 messages.append(
                     Message(
                         role=Role.TOOL,
