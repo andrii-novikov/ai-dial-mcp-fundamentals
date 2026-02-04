@@ -1,62 +1,74 @@
-from pathlib import Path
+import os
 
 from mcp.server.fastmcp import FastMCP
-
-from models.user_info import UserSearchRequest, UserCreate, UserUpdate
+from models.user_info import UserCreate, UserSearchRequest, UserUpdate
 from user_client import UserClient
 
-#TODO:
-# 1. Create instance of FastMCP as `mcp` (or another name if you wish) with:
-#       - name is "users-management-mcp-server",
-#       - host is "0.0.0.0",
-#       - port is 8005,
-# 2. Create UserClient
+mcp = FastMCP(name="users-management-mcp-server", host="0.0.0.0", port=8005)
+user_client = UserClient()
 
 
 # ==================== TOOLS ====================
-#TODO:
-# You need to add all the tools here. You will need to create 5 async methods and mark them as @mcp.tool() (if you
-# named FastMCP not as `mcp` then use the name that you have used). All tools return `str`.
-# Don't forget about tool description, it will LLM to identify when some particular tool should be used.
-# https://gofastmcp.com/servers/tools
-# ---
-# Tools:
-# 1. `get_user_by_id`:-
-# 2. `delete_user`:-
-# 3. `search_user`:-
-# 4. `add_user`:-
-# 5. `update_user`:-
+
+
+@mcp.tool()
+async def get_user_by_id(user_id: int) -> str:
+    """Get user by id"""
+    return await user_client.get_user(user_id)
+
+
+@mcp.tool()
+async def delete_user(user_id: int) -> str:
+    """Delete user by id"""
+    return await user_client.delete_user(user_id)
+
+
+@mcp.tool()
+async def search_user(user_search_request: UserSearchRequest) -> str:
+    """Search user by name, surname, email, gender"""
+    return await user_client.search_users(
+        name=user_search_request.name,
+        surname=user_search_request.surname,
+        email=user_search_request.email,
+        gender=user_search_request.gender,
+    )
+
+
+@mcp.tool()
+async def add_user(user: UserCreate) -> str:
+    """Add a new user"""
+    return await user_client.add_user(user)
+
+
+@mcp.tool()
+async def update_user(user_id: int, user: UserUpdate) -> str:
+    """Update user by id"""
+    return await user_client.update_user(user_id, user)
+
 
 # ==================== MCP RESOURCES ====================
 
-#TODO:
-# Provides screenshot with Swagger endpoints of User Service. We need for the case to show you that MCP servers can
-# provide some static resources.
-# https://gofastmcp.com/servers/resources
-# ---
-# 1. Create async method `get_flow_diagram` that returns bytes and mark as `@mcp.resource` with:
-#   - uri = "users-management://flow-diagram"
-#   - mime_type="image/png"
-# 2. You need to get `flow.png` picture from `mcp_server` folder and return it as bytes.
-# 3. Don't forget to provide resource description
+
+@mcp.resource(uri="users-management://flow-diagram", mime_type="image/png")
+async def get_flow_diagram() -> bytes:
+    """Get flow diagram"""
+    with open(f"{os.path.dirname(__file__)}/flow.png", "rb") as f:
+        return f.read()
 
 
 # ==================== MCP PROMPTS ====================
 
-#TODO:
-# Provides static prompts that can be used by Clients
-# https://gofastmcp.com/servers/prompts
-# ---
-# Prompts are prepared, you need just properly return them and provide descriptions of them"
 
-# Helps users formulate effective search queries
-"""
-You are helping users search through a dynamic user database. The database contains 
+@mcp.prompt()
+async def ask_for_user_search() -> str:
+    """Helps users formulate effective search queries"""
+    return """
+You are helping users search through a dynamic user database. The database contains
 realistic synthetic user profiles with the following searchable fields:
 
 ## Available Search Parameters
 - **name**: First name (partial matching, case-insensitive)
-- **surname**: Last name (partial matching, case-insensitive)  
+- **surname**: Last name (partial matching, case-insensitive)
 - **email**: Email address (partial matching, case-insensitive)
 - **gender**: Exact match (male, female, other, prefer_not_to_say)
 
@@ -67,7 +79,7 @@ realistic synthetic user profiles with the following searchable fields:
 - Try common variations: "mike" vs "michael", "liz" vs "elizabeth"
 - Consider cultural name variations
 
-### For Email Searches  
+### For Email Searches
 - Search by domain: "gmail" for all Gmail users
 - Search by name patterns: "john" for emails containing john
 - Use company names to find business emails
@@ -84,7 +96,7 @@ realistic synthetic user profiles with the following searchable fields:
 ## Example Search Patterns
 ```
 "Find all Johns" → name="john"
-"Gmail users named Smith" → email="gmail" + surname="smith"  
+"Gmail users named Smith" → email="gmail" + surname="smith"
 "Female users with company emails" → gender="female" + email="company"
 "Users with Johnson surname" → surname="johnson"
 ```
@@ -96,19 +108,21 @@ realistic synthetic user profiles with the following searchable fields:
 4. Combine multiple criteria for precision
 5. Remember searches are case-insensitive
 
-When helping users search, suggest multiple search strategies and explain 
+When helping users search, suggest multiple search strategies and explain
 why certain approaches might be more effective for their goals.
 """
 
 
-# Guides creation of realistic user profiles
-"""
-You are helping create realistic user profiles for the system. Follow these guidelines 
+@mcp.prompt()
+async def ask_for_create_user() -> str:
+    """Guides creation of realistic user profiles"""
+    return """
+You are helping create realistic user profiles for the system. Follow these guidelines
 to ensure data consistency and realism.
 
 ## Required Fields
 - **name**: 2-50 characters, letters only, culturally appropriate
-- **surname**: 2-50 characters, letters only  
+- **surname**: 2-50 characters, letters only
 - **email**: Valid format, must be unique in system
 - **about_me**: Rich, realistic biography (see guidelines below)
 
@@ -122,11 +136,11 @@ to ensure data consistency and realism.
 ## Address Guidelines
 Provide complete, realistic addresses:
 - **country**: Full country names
-- **city**: Actual city names  
+- **city**: Actual city names
 - **street**: Realistic street addresses
 - **flat_house**: Apartment/unit format (Apt 123, Unit 5B, Suite 200)
 
-## Credit Card Guidelines  
+## Credit Card Guidelines
 Generate realistic but non-functional card data:
 - **num**: 16 digits formatted as XXXX-XXXX-XXXX-XXXX
 - **cvv**: 3 digits (000-999)
@@ -140,7 +154,7 @@ Create engaging, realistic biographies that include:
 - Authentic voice and writing style
 - Cultural and demographic appropriateness
 
-### Interests & Hobbies  
+### Interests & Hobbies
 - 2-4 specific hobbies or activities
 - 1-3 broader interests or passion areas
 - 1-2 life goals or aspirations
@@ -148,7 +162,7 @@ Create engaging, realistic biographies that include:
 ### Biography Templates
 Use varied narrative structures:
 - "I'm a [trait] person who loves [hobbies]..."
-- "When I'm not working, you can find me [activity]..."  
+- "When I'm not working, you can find me [activity]..."
 - "Life is all about balance for me. I enjoy [interests]..."
 - "As someone who's [trait], I find great joy in [hobby]..."
 
@@ -167,7 +181,7 @@ Use varied narrative structures:
 
 When creating profiles, aim for diversity in:
 - Geographic representation
-- Age distribution  
+- Age distribution
 - Interest variety
 - Socioeconomic backgrounds
 - Cultural backgrounds
@@ -175,6 +189,4 @@ When creating profiles, aim for diversity in:
 
 
 if __name__ == "__main__":
-    #TODO:
-    # Run server with `transport="streamable-http"`
-    raise NotImplementedError()
+    mcp.run(transport="streamable-http")
